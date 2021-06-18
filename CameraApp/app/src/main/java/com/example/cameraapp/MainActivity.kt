@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
@@ -20,6 +21,8 @@ import kotlinx.android.synthetic.main.activity_main.*
 import java.io.File
 import java.nio.ByteBuffer
 import java.text.SimpleDateFormat
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -118,7 +121,11 @@ class MainActivity : AppCompatActivity() {
                                     bmp.getPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
                                     val reds = pixels.map {p -> (p shr 16) and 0xff }
                                     val meanRed = reds.average()
-                                    valueView.text = "%.1f".format(meanRed)
+                                    val btn = findViewById<Button>(R.id.btn)
+                                    btn.setOnClickListener{
+                                        val dateAndtimeFirst: LocalDateTime = LocalDateTime.now()
+                                        roop(meanRed,dateAndtimeFirst)
+                                    }
                                     Log.d(TAG, "Average RED: $meanRed")
                                 }
                             }
@@ -143,7 +150,35 @@ class MainActivity : AppCompatActivity() {
 
         }, ContextCompat.getMainExecutor(this))
     }
-
+    var meanRedList = arrayOf(0.0,0.0,0.0)
+    var timeList = arrayOf(
+        LocalDateTime.of(2019, 3, 22, 10, 10, 10),
+        LocalDateTime.of(2019, 3, 22, 10, 10, 10)
+    )
+    var heartBeat = arrayListOf(0.0)
+    var cnt=0
+    var timeKeep = 0.0
+    fun roop(redMean : Double,dateAndtimeFirst : LocalDateTime){
+        while (timeKeep<10){
+            meanRedList[2] = meanRedList[1]
+            meanRedList[1] = meanRedList[0]
+            meanRedList[0] = redMean
+            if (meanRedList[1] > meanRedList[0] && meanRedList[1] < meanRedList[2]){
+                val dateAndtime: LocalDateTime = LocalDateTime.now()
+                timeList[1] = timeList[0]
+                timeList[0] = dateAndtime
+                var difference = ChronoUnit.MILLIS.between(timeList[1], timeList[0]).toDouble()
+                heartBeat.add(0.0/difference*60.0*1000)
+                timeKeep = ChronoUnit.SECONDS.between(dateAndtimeFirst, timeList[0]).toDouble()
+            }
+            cnt++
+            print(timeKeep)
+            print(heartBeat[cnt])
+            valueView.text = "%.1f".format(heartBeat[cnt])
+        }
+        val meanHeartBeat = heartBeat.sum() / cnt
+        valueView.text = "%.1f".format(meanHeartBeat)
+    }
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(
                 baseContext, it) == PackageManager.PERMISSION_GRANTED
