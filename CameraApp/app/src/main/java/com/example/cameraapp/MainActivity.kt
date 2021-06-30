@@ -26,11 +26,13 @@ import java.time.temporal.ChronoUnit
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlin.collections.ArrayList
+import kotlin.concurrent.thread
 
 
 typealias LumaListener = (luma: Double) -> Unit
 
-class MainActivity : AppCompatActivity() {
+public class MainActivity : AppCompatActivity() {
     companion object {
         private const val TAG = "CameraXBasic"
         private const val FILENAME_FORMAT = "yyyy-MM-dd-HH-mm-ss-SSS"
@@ -42,25 +44,44 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var outputDirectory: File
     private lateinit var cameraExecutor: ExecutorService
+    // private var difference: Double? //private このファイル　lateinit 後で初期化
+    var difference: Double = 0.0
+    var meanRedList: Array<Double> = arrayOf(0.0,0.0,0.0)
+    var timeList: Array<LocalDateTime> = arrayOf(
+        LocalDateTime.of(2019, 3, 22, 10, 10, 10),
+        LocalDateTime.of(2019, 3, 22, 10, 10, 10)
+    )
+    var heartBeat: ArrayList<Double> = arrayListOf(0.0)
+    var cnt: Int = 0
+    var timeKeep: Double = 0.0
+    var flag: Boolean = false
+    var cameraProvider: ProcessCameraProvider? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        Log.d(TAG,"called onCreate")
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Request camera permissions
-        if (allPermissionsGranted()) {
-            startCamera()
-        } else {
-            ActivityCompat.requestPermissions(
+
+
+        val btn = findViewById<Button>(R.id.btn)
+        btn.setOnClickListener{
+            it.isEnabled = false//ボタン押せなくする
+            Handler(Looper.getMainLooper()).postDelayed({
+                cameraProvider!!.unbindAll()
+                it.isEnabled = true
+            },5000)
+            // Request camera permissions
+            if (allPermissionsGranted()) {
+                startCamera()
+            } else {
+                ActivityCompat.requestPermissions(
                     this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
+            }
         }
 
-        // Set up the listener for take photo button
-        camera_capture_button.setOnClickListener { takePhoto() }
-
-        outputDirectory = getOutputDirectory()
-
         cameraExecutor = Executors.newSingleThreadExecutor()
+        Log.d(TAG,"finish onCreate")
     }
 
     private fun takePhoto() {
@@ -98,7 +119,7 @@ class MainActivity : AppCompatActivity() {
 
         cameraProviderFuture.addListener(Runnable {
             // Used to bind the lifecycle of cameras to the lifecycle owner
-            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+            cameraProvider = cameraProviderFuture.get()
 
             // Preview
             val preview = Preview.Builder()
@@ -121,27 +142,16 @@ class MainActivity : AppCompatActivity() {
                                     bmp.getPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
                                     val reds = pixels.map {p -> (p shr 16) and 0xff }
                                     val meanRed = reds.average()
-                                    val btn = findViewById<Button>(R.id.btn)
-                                    btn.setOnClickListener{
-                                        val dateAndtimeFirst: LocalDateTime = LocalDateTime.now()
-                                        //roop(meanRed,dateAndtimeFirst)
-                                        while (timeKeep<10){
-                                            meanRedList[2] = meanRedList[1]
-                                            meanRedList[1] = meanRedList[0]
-                                            meanRedList[0] = meanRed
-                                            if (meanRedList[1] > meanRedList[0] && meanRedList[1] < meanRedList[2]){
-                                                val dateAndtime: LocalDateTime = LocalDateTime.now()
-                                                timeList[1] = timeList[0]
-                                                timeList[0] = dateAndtime
-                                                difference = ChronoUnit.MILLIS.between(timeList[1], timeList[0]).toDouble()
-                                                heartBeat.add(0.0/difference*60.0*1000)
-                                                timeKeep = ChronoUnit.SECONDS.between(dateAndtimeFirst, timeList[0]).toDouble()
-                                            }
-                                            cnt++
-                                            //print(heartBeat[cnt].toString())
-                                            //valueView.text = "%.1f".format(heartBeat[cnt])//ココ問題
-                                        }
-                                        val meanHeartBeat = heartBeat.sum() / cnt
+                                    meanRedList[2] = meanRedList[1]
+                                    meanRedList[1] = meanRedList[0]
+                                    meanRedList[0] = meanRed//巡回配列
+                                    if (meanRedList[1] > meanRedList[0] && meanRedList[1] < meanRedList[2]){
+                                        val dateAndtime: LocalDateTime = LocalDateTime.now()
+                                        timeList[1] = timeList[0]
+                                        timeList[0] = dateAndtime
+                                        difference = ChronoUnit.MILLIS.between(timeList[1], timeList[0]).toDouble()
+                                        heartBeat.add(1.0/difference*60.0*1000)
+                                        val meanHeartBeat = heartBeat.sum() / heartBeat.size
                                         valueView.text = "%.1f".format(meanHeartBeat)
                                     }
                                     Log.d(TAG, "Average RED: $meanRed")
@@ -156,10 +166,10 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 // Unbind use cases before rebinding
-                cameraProvider.unbindAll()
+                cameraProvider!!.unbindAll()
 
                 // Bind use cases to camera
-                cameraProvider.bindToLifecycle(
+                cameraProvider!!.bindToLifecycle(
                         this, cameraSelector, preview, imageCapture, imageAnalyzer)
 
             } catch(exc: Exception) {
@@ -168,18 +178,7 @@ class MainActivity : AppCompatActivity() {
 
         }, ContextCompat.getMainExecutor(this))
     }
-    var meanRedList = arrayOf(0.0,0.0,0.0)
-    var timeList = arrayOf(
-        LocalDateTime.of(2019, 3, 22, 10, 10, 10),
-        LocalDateTime.of(2019, 3, 22, 10, 10, 10)
-    )
-    var heartBeat = arrayListOf(0.0)
-    var cnt=0
-    var timeKeep = 0.0
-    var difference = 0.0
-    fun roop(redMean : Double,dateAndtimeFirst : LocalDateTime){
 
-    }
     private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(
                 baseContext, it) == PackageManager.PERMISSION_GRANTED
