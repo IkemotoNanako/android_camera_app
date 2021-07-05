@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -28,6 +29,9 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.collections.ArrayList
 import kotlin.concurrent.thread
+import android.content.Context
+import androidx.annotation.RequiresApi
+import android.os.Build
 
 
 typealias LumaListener = (luma: Double) -> Unit
@@ -56,6 +60,9 @@ public class MainActivity : AppCompatActivity() {
     var timeKeep: Double = 0.0
     var flag: Boolean = false
     var cameraProvider: ProcessCameraProvider? = null
+    var flashOn = false
+    lateinit var manager: CameraManager
+    var cameraId: String = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         Log.d(TAG,"called onCreate")
@@ -65,19 +72,37 @@ public class MainActivity : AppCompatActivity() {
 
 
         val btn = findViewById<Button>(R.id.btn)
+        manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
+
+        manager.registerTorchCallback(@RequiresApi(Build.VERSION_CODES.M)
+        object : CameraManager.TorchCallback() {
+            override fun onTorchModeChanged(id: String, enabled: Boolean) {
+                super.onTorchModeChanged(id, enabled)
+
+                cameraId = id
+                flashOn = enabled
+            }
+        }, Handler())
+
         btn.setOnClickListener{
             it.isEnabled = false//ボタン押せなくする
             Handler(Looper.getMainLooper()).postDelayed({
-                cameraProvider!!.unbindAll()
-                it.isEnabled = true
+                Handler(Looper.getMainLooper()).postDelayed({
+                    cameraProvider!!.unbindAll()
+                    it.isEnabled = true
+//                    manager.setTorchMode(cameraId, !flashOn)
+                },5000)
+
+                manager.setTorchMode(cameraId, !flashOn)
+
+                // Request camera permissions
+                if (allPermissionsGranted()) {
+                    startCamera()
+                } else {
+                    ActivityCompat.requestPermissions(
+                        this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
+                }
             },5000)
-            // Request camera permissions
-            if (allPermissionsGranted()) {
-                startCamera()
-            } else {
-                ActivityCompat.requestPermissions(
-                    this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
-            }
         }
 
         cameraExecutor = Executors.newSingleThreadExecutor()
